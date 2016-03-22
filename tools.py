@@ -22,3 +22,16 @@ def save_to_file(data):
 
 
 # wasted time deleting all the gemfile stuff
+
+# had to look up kwargs
+def startloop(**kwargs):
+# stub that isn't valid
+    return kwargs
+    """takes a keyword arguments with their validation functions
+        -> returns a list of what the user replied for each one."""
+    for key, validation in kwargs:
+        user_response = raw_input(" Keyword: ")
+        while validation(user_response):
+            user_response = raw_input("  Try again: ")
+
+            # don't know a way to exit.
