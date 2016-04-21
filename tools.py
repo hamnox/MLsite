@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 # okay so, I need to build a little tool
 #"""err: first have to think of a bunch of little tools and DECISION PARALYSIS"""
 #"""err: want to immediately switch to pycharm"""
@@ -26,7 +28,7 @@ def startloop(**kwargs):
 
 
 # DATATYPE: str, str, httpstr, categorystr or [categorystr..s], str -> Paper, false
-def make_paper(title, desc, link, tags, doi):
+def make_paper(title, desc=None, link=None, tags=None, doi=None):
     """takes a paper and returns an unsaved paper object or errors if any of the
        items are formatted incorrectly. Description, tags, and (DOI or Link) can be blank"""
     # stub
@@ -41,7 +43,7 @@ def make_paper(title, desc, link, tags, doi):
             "this is a description of the paper",
             "http://www.fakeaddress.io/paper.pdf",
             ['speed', 'basics'],
-            "10.1038/nature14236"]
+            "10.1038/nature14236"] # TODO: reformat to Dictionary
 
 
 
@@ -59,7 +61,7 @@ def save_paper(db, paper):
 
 
 import os
-def atomic_write(filename, text)
+def atomic_write(filename, text):
     f = open('_tempfile_', 'w')
     f.write(text)
     # make sure that all data is on disk
@@ -71,6 +73,43 @@ def atomic_write(filename, text)
     os.rename('_tempfile_', filename)
 
 
+
+# ----- WISHLIST -----
+# port_database: DB -> jsonfile
+# backup db (periodically called)
+# load db (at start)
+# initdb, teardowndb
+
+"""
+# https://www.a2hosting.com/kb/developer-corner/postgresql/connecting-to-postgresql-using-python
+# Simple routine to run a query on a database and print the results:
+def doQuery( conn ) :
+    cur = conn.cursor()
+
+    cur.execute( "SELECT fname, lname FROM employee" )
+
+    for firstname, lastname in cur.fetchall() :
+        print firstname, lastname
+
+
+print "Using psycopg2"
+
+print "Using PyGreSQL"
+import pgdb
+myConnection = pgdb.connect( host=hostname, user=username, password=password, database=database )
+doQuery( myConnection )
+myConnection.close()
+"""
+
+# TODO: assert login_info.json exists or create it with defaults
+import dbtools
+
+login_info = json.load(open("login_info.json","r"))
+dbtools.load_DB(login_info['testML'])
+    
+
+# TODO: find the thing that opens on exist, use it to close the connection
+# https://docs.python.org/2/library/atexit.html
 
 
 
@@ -103,7 +142,7 @@ def test_make_paper():
     # blanks are not okay
     try: 
         make_paper(None, None, None, None, None) == False
-    except ValueError e:
+    except (TypeError, ValueError) as e:
         pass
 
     assert make_paper(fakepaper_1[0],
@@ -124,7 +163,7 @@ def test_make_paper():
                             [],
                             fakepaper_2[4]) == fakepaper_2
     assert make_paper(fakepaper_2[0],
-                            fakepaper_2[1]
+                            fakepaper_2[1],
                             fakepaper_2[2],
                             "",
                             fakepaper_2[4]) == fakepaper_2
@@ -135,19 +174,21 @@ def test_make_paper():
                             fakepaper_3[2],
                             fakepaper_3[3],
                             fakepaper_3[4])
-    except ValueError e:
+    except (TypeError, ValueError) as e:
         pass
 
     # DOI or Link can be blank
-    assert make_paper("t", "d", None, None, "10.1037/rmh0000004") ==
-                     ["t", "d", None, None, "10.1037/rmh0000004"]
-    assert make_paper("t", "d", "", None, "10.1037/rmh0000004") ==
-                     ["t", "d", None, None, "10.1037/rmh0000004"]
-    assert make_paper("t", "d", "www.thiscoolness.me", None, None) ==
-                     ["t", "d", "www.thiscoolness.me", None, None]
-    assert make_paper("t", "d", "https://cool.me", None, "") ==
-                     ["t", "d", "https://cool.me", None, None]
+    assert make_paper("t", "d", None, None, "10.1037/rmh0000004") == [
+                      "t", "d", None, None, "10.1037/rmh0000004"]
+    assert make_paper("t", "d", "", None, "10.1037/rmh0000004") == [
+                      "t", "d", None, None, "10.1037/rmh0000004"]
+    assert make_paper("t", "d", "www.thiscoolness.me", None, None) == [
+                      "t", "d", "www.thiscoolness.me", None, None]
+    assert make_paper("t", "d", "https://cool.me", None, "") == [
+                      "t", "d", "https://cool.me", None, None]
 
     # also need to test invalid DOIS, invalid links
 
-def test_save_paper()
+def test_save_paper():
+    # stub
+    pass
