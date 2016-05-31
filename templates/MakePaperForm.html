@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+    <head></head>
+
+    <body>
+        <form method="POST" action="/make">
+            <p><label for="title">
+                <p>Title:</p>
+                <input type="text" id="title" name="title" required>
+            </label></p>
+            <p><label for="desc">
+                <p>Description:</p>
+                <input type="text" id="desc" name="desc">
+            </label></p>
+            <!-- eventually replace this with json getter or pass categories in-->
+            <p><label for="categories">
+                <p>Categories:</p>
+                <textarea id="categories" name="categories"></textarea>
+            </label></p>
+            <p><label for="link">
+                <p>Link:</p>
+                <input type="text" id="link" name="link">
+            </label></p>
+            <p><label for="doi">
+                <p>Doi:</p>
+                <input type="text" id="doi" name="doi">
+            </label></p>
+            <input type="submit" value="Submit">
+        </form>
+    </body>
+</html>
+<!-- aaaagggh I want to do all of the accessibility stuff -->
