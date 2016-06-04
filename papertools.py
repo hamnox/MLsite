@@ -43,6 +43,15 @@ def validate_desc(desc):
         return False
     return str(desc)
 
+# take a comma or space delimited string, return a list of tags
+
+def split_tags(string):
+    if "," in string:
+        string = string.replace(", ", ",")
+        return string.split(",")
+    else:
+        return string.split(" ")
+
 def validate_tags(tags):
     if not tags:
         return None
@@ -127,6 +136,13 @@ def tests():
         assert validate_desc(u"This is a description.") == "This is a description."
     test_title_and_desc()
 
+    def test_split_tags():
+        assert split_tags("asdf, fjfjf, rururu") == ["asdf", "fjfjf", "rururu"]
+        assert split_tags("asdf, fjfjf,rururu") == ["asdf", "fjfjf", "rururu"]
+        assert split_tags("asdf fjfjf rururu") == ["asdf", "fjfjf", "rururu"]
+        assert split_tags("asinglething") == ["asinglething"]
+        assert split_tags("") == [""]
+
     def test_tags():
         assert validate_tags("") == None
         assert validate_tags(()) == None
@@ -169,7 +185,6 @@ def tests():
                               'link': "http://www.ubercool.com",
                               'tags': "",
                               'doi': ""}
-
         try:
             check_paper({})
         except ValueError as e:
@@ -216,7 +231,9 @@ def tests():
             check_paper(pbad)
         except ValueError as e:
             assert e.message == 'Invalid link: not really a link'
+
     test_check_paper()
+    test_split_tags()
 
 
 
