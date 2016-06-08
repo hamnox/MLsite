@@ -1,0 +1,402 @@
+---
+title: "Categorize ML"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# if working in repl loop, don't forget to setwd
+setwd("~/Documents/MLsite/")
+```
+
+```{r Parse Recommended Categories}
+library("stringr")
+get_possible_categories = function(sample_text, savenames = names(sample_text)) {
+  possible_categories = stringr::str_match_all(sample_text,
+                                "(?:,|and|or|maybe|in|also)? \"(.*?)\"")
+  result = sapply(possible_categories, function(x) x[,-1])
+  names(result) = savenames
+  return(result)
+}
+
+ragged_transform = function(ragged_list) {
+  rowmax = max(sapply(ragged_list, length))
+  t(sapply(ragged_list, function(x, rowmax) x[rep(TRUE, rowmax)], rowmax))
+}
+
+```
+
+```{r test categories, eval=FALSE, include=FALSE}
+
+# testing parser, will not show up in resulting html
+sample_text = c(item1='http://arxiv.org/abs/1602.04062 [abs] using reinforcement learning to entirely automatically tune hyperparameters!! about damn fucking time! should go in "hyperparameters", "rl". they also do some interesting investigation into what are good strategies based on the learned behaviors.',
+item2='http://arxiv.org/abs/1602.04133 [abs] more progress in using deep gaussian processes as deep bayesian neural networks. should go in "gaussian processes", "bayesian neural networks". very interesting, I wonder if this will take over in a year or two?',
+item3='http://arxiv.org/abs/1602.04868 [abs] real time face recognition on mobile devices. should go in "speed", "images/faces". they implement it on mobile gpus.',
+item4='http://arxiv.org/abs/1602.09065 [abs] dataset for sign language gesture recognition, and some pose recognition experiments on it. should go in "images/pose" and maybe "language/speech" and "datasets".',
+item5='http://arxiv.org/abs/1603.00550 [abs] "zero-shot learning" by using descriptions of classes without examples and doing some sort of regularization with them. interesting. should go in "classification", "generalization", maybe "transfer learning", "regularization". sounds like it works really really well, and this is a really cool topic.')
+test = c("and and and and and", "fjdfjdand", "and", "", "wemciwomvisoidvj", "and fjfjfjfj and")
+  gsub("and", test, ignore.case=TRUE)
+
+possible_categories = get_possible_categories(sample_text)
+possible_categories = ragged_transform(possible_categories)
+possible_categories
+```
+
+```{r Ambiguous snippets}
+
+# note: if col.names not specified, it guesses the number of columns from the first five rows
+# these are manually set from looking at the file in excel
+amb_df = read.delim("ambiguous.csv", sep="|", header=FALSE, as.is=TRUE, na.strings="", col.names=c(letters[1:26], paste0("a", letters[1:5])))
+link_df = read.csv("doctable.csv", sep="|", header=FALSE, as.is=TRUE, na.strings="", col.names=letters[1:23])
+
+names(amb_df) = c("category1",
+                  "category2",
+                  "optmatch1",
+                  "optmatch2",
+                  paste0("snip", seq_len(ncol(amb_df)-4)))
+names(link_df) = c("category",
+                   "text",
+                   paste0("link", seq_len(ncol(link_df)-2)))
+
+
+display_trimmed = function(df, rown=1, nchars=100) {
+  for (i in 1:ncol(df)) {
+    print(paste0(names(df)[i], ": ",
+      strtrim(amb_df[rown,i], nchars)))
+  }
+}
+# truncate print example item
+display_trimmed(link_df)
+
+# truncate print example ambiguous snippet
+display_trimmed(amb_df, 25)
+
+# helper function
+get_response = function(options_vec, prompt, stopkeys=c("Q", "q", "QUIT")) {
+  user_reply = readline(prompt)
+  count = 1
+  while (count <= 10) {
+    if (user_reply %in% stopkeys) {
+      return (NA)
+    }
+    if (user_reply %in% as.character(options_vec)) {
+      return (user_reply)
+    }
+    print("Invalid. Try again")
+    user_reply = readline(prompt)
+    count = count + 1
+  }
+  print("10 invalid inputs.. Giving up now.")
+  return (NA)
+}
+
+
+```
+
+
+```{r Ambiguous Functions, include=FALSE}
+# get options list from ambiguous snippet,
+# return related options list
+amb_options = function(amb_objects, matchcolumn = link_df$text) {
+  
+  obs = nrow(amb_objects)
+  this_options = lapply(seq_len(obs), function(n) {
+    list(categories=NA,
+         matchoptions=NA,
+         snips=NA)})
+  
+  # check that the first and second 
+  match3idxs = match(amb_objects[["optmatch1"]], matchcolumn)
+  match4idxs = match(amb_objects[["optmatch2"]], matchcolumn)
+  
+  # add non-na snippets
+  logicals = !is.na(amb_objects)
+  logicals[,1:4] = FALSE
+  for (rown in 1:obs) {
+    this_options[[rown]][["snips"]] = amb_objects[rown, logicals[rown,]]
+  }
+  for (i in seq_len(obs)) {
+    if (!is.na(amb_objects[i,"category1"])) {
+      # save the first category
+      this_options[[i]][["categories"]] = c(head=amb_objects[i,1])
+    }
+    matchoptions = c()
+    if (!is.na(match3idxs[i]) && !is.na(amb_df[i,"optmatch1"])) {
+      matchoptions = c(optmatch1=amb_objects[i,"optmatch1"])
+    }
+    if (!is.na(match4idxs[i]) && !is.na(amb_df[i,"optmatch2"])) {
+      matchoptions = c(matchoptions, optmatch2=amb_objects[i,"optmatch2"])
+    }
+    if (length(matchoptions) > 0) {
+      this_options[[i]][["matchoptions"]] = matchoptions
+    }
+  }
+  return (this_options)
+}
+
+
+
+# returns a vector of which option to use
+amb_display = function(options_obj, modify=TRUE) {
+  categories = options_obj[["categories"]]
+  matchoptions = options_obj[["matchoptions"]]
+  snippets = options_obj[["snips"]]
+  
+  if (sum(is.na(categories))> 0) {
+    print ("No category")
+  } else {
+    print("Category")
+    for (x in paste0("  ", names(categories), " -> ", categories)) {
+      print (x)
+    }
+  }
+  
+  if (sum(is.na(matchoptions)) > 0) {
+    print ("No matches")
+  } else {
+    print ("Matches")
+    for (x in paste0("  ", names(matchoptions), " -> ", strtrim(matchoptions,300), "...")) {
+      print (x)
+    }
+  }
+    print ("Snippets")
+  for (x in paste0("  ", names(snippets), " -> ", strtrim(snippets, 300))) {
+      print (x)
+  }
+  
+  return(get_response(c(names(matchoptions), "d"),
+                      "Pick match option to lump with (d to discard): "))
+}
+```
+
+```{r Clean Up Linked}
+# are ALL the links routed through google?
+all_links = unlist(link_df[3:ncol(link_df)])
+sum(!(grepl("^https://www.google.com/url\\?q=.*?\\&sa=D\\&ust=\\d+\\&usg=",all_links) | is.na(all_links)))
+
+# replace google urls
+for (i in seq_len(nrow(link_df))) {
+  # second column of match matrix
+  link_df[i, 3:ncol(link_df)] = str_match(
+            link_df[i, 3:ncol(link_df)],
+            "^https://www.google.com/url\\?q=(.*?)\\&sa=D\\&ust=\\d+\\&usg=")[,2]
+}
+
+# remove redundant links at beginning of text
+possible_replace = str_replace(link_df$text, "https?://.*&#160;", "")
+possible_replace[str_length(str_trim(possible_replace)) < 10] = NA
+link_df$text[!is.na(possible_replace)] = possible_replace[!is.na(possible_replace)]
+
+# get rid of any non-breaking spaces left
+link_df$text = str_replace_all(link_df$text, "&#160;", " ")
+
+```
+
+
+```{r Sort Ambiguous}
+# fix one mistake in particular I noticed
+amb_df[25, "snip5"] = NA
+
+# Custom Functions to aid manually sorting ambiguous results
+  these_options = amb_options(amb_df, link_df$text)
+  # results = sapply(these_options, amb_display, df=link_df)
+
+# Notes:
+# 86 in linkeddf, very deep/vanishing gradients category, has some sublinks that should be together rather than separated
+# Dataset wish list snippets got divided, discarded the nonlinky ones
+
+results= c("d", "d", "d", "optmatch2", NA, "optmatch1", NA, NA, NA, NA, NA, "optmatch1", "d", "optmatch1", "optmatch1", "optmatch1", "optmatch1", "optmatch1", "d", "d", "d", "d", NA, NA, NA, "optmatch1", NA, "d", NA, NA, NA, NA, NA, "optmatch1", NA, "d", NA, "d")
+
+
+# 1596 link observations to start off with
+print(nrow(link_df))
+
+# add ambiguous observations
+appendcount = 0
+for (i in 1:length(results)) {
+  if (is.na(results[i])) {
+    totalstring = paste0(these_options[[i]]$snips, collapse="<br />")
+    appendval = c(amb_df[i,1], totalstring,
+                                rep(NA, ncol(amb_df)-2))
+    link_df = rbind.data.frame(link_df, appendval)
+    next
+  }
+  if (results[i] %in% names(amb_df)) {
+    tomatch = amb_df[i,results[i]]
+    snipstext = paste0(these_options[[i]]$snips, collapse="<br />")
+    link_df[match(
+      tomatch, link_df$text
+                ), "text"] = paste0(tomatch, snipstext, sep="<br />")
+    appendcount = appendcount + 1
+  }
+}
+# 1613 rows after adding ambiguous
+print(nrow(link_df))
+# 10 rows modified
+print(appendcount)
+
+```
+
+```{r Real categories}
+library("dplyr")
+
+
+# category hiearchy:
+categories = read.csv("categories.csv", as.is=TRUE, quote="")
+categories$l1 = NA
+categories$l2 = NA
+
+# find parent categories
+lasttop = NA
+lastsub = NA
+for (i in 1:nrow(categories)) {
+  if (categories$tag[i] == 1) {
+    lasttop = categories$name[i]
+    lastsub = NA
+  }
+  if (categories$tag[i] == 2) {
+    lastsub = categories$name[i]
+  }
+  if (categories$tag[i] == 5) {
+    categories$l2[i] = lastsub
+  }
+  categories$l1[i]=lasttop
+}
+
+# count the number of items in each category
+link_df = mutate(link_df, category2 = categories$l1[
+                match(category, categories$name)]) 
+counts = group_by(link_df, category2) %>%
+         summarize(count = n())
+
+
+# these categories work pretty well, though of course Inbox is overfull
+print(counts,n = nrow(counts))
+
+```
+
+```{r Categorize Papers}
+# Inbox and Rubbish Compactor need to be recategorized
+
+# get row indices
+need_recategorizing = seq_len(nrow(link_df))[
+  link_df$category2 %in% c("Inbox", "Rubbish Compactor")]
+
+need_recategorizing = data.frame(idx=need_recategorizing,
+                                 text = link_df$text[need_recategorizing])
+# get categorie suggestions
+possible_categories = get_possible_categories(need_recategorizing$text)
+possible_categories = ragged_transform(possible_categories)
+
+# clean up strings
+cleanedstrings = str_trim(str_to_lower(str_replace_all(possible_categories, "[- //.!?,]", "")))
+# remove obviously too long ones
+sum(is.na(cleanedstrings))
+cleanedstrings[nchar(cleanedstrings) > 50] = NA
+sum(is.na(cleanedstrings))
+
+possible_counts = table(cleanedstrings)
+ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
+ordered_counts[1:50]
+
+# add some categories
+categories = rbind(categories, c(2, "Video", "Images", NA),
+                   c(2, "Captioning", "Images", NA),
+                   c(1, "Convolution", "Convolution", NA),
+                   c(2, "Retrieval", "Images", NA))
+
+# identify names identical already
+category_clean = str_to_lower(str_replace_all(categories$name, "[- //.!?,]", ""))
+samey = ordered_counts[!is.na(pmatch(names(ordered_counts),
+                               category_clean, duplicates.ok=TRUE))]
+sum(samey)
+
+# add identical names
+identified = matrix(NA, nrow=nrow(possible_categories),
+                    ncol=ncol(possible_categories))
+
+logical = cleanedstrings %in% names(samey)
+identified[logical] = pmatch(cleanedstrings[logical],category_clean,
+                             duplicates.ok = TRUE)
+
+# see what first categories are largely missing still
+cleanedstrings2 = strtrim(str_trim(str_to_lower(str_replace_all(
+  possible_categories[is.na(identified[,1]),1], "[- //.!?,]", ""))), 50)
+possible_counts = table(cleanedstrings2)
+ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
+ordered_counts[1:20]
+
+
+# in future I need to get some language approximation going on
+cleanedstrings[grepl("bio$", cleanedstrings)] = "Bio modeling (and bio context/pure bio papers)"
+cleanedstrings[grepl("3d$", cleanedstrings)] = "3D"
+cleanedstrings[grepl("^bayesian|bayesian$", cleanedstrings)] = "Bayesian Neural Nets"
+cleanedstrings[grepl("^theory", cleanedstrings)] = "Theory about neural network effectiveness"
+cleanedstrings[grepl("video$", cleanedstrings)] = "Video"
+cleanedstrings[grepl("^trainingalgorithms$",cleanedstrings)] = "Optimizers / Learning Algorithms"
+cleanedstrings[grepl("^generative", cleanedstrings)] = "Generative modeling"
+cleanedstrings[grepl("^imagescaptioning$", cleanedstrings)] = "Captioning"
+cleanedstrings[grepl("^convolution(pooling)?$", cleanedstrings)] = "Convolution"
+cleanedstrings[grepl("^safety|safety$", cleanedstrings)] = "AGI Safety/reliable reinforcement learners"
+cleanedstrings[grepl("^applicationscars$", cleanedstrings)] = "Cars"
+cleanedstrings[grepl("^applications?|applications?$", cleanedstrings)] = "Misc applications"
+cleanedstrings[grepl("architecturesverydeep", cleanedstrings)] = "Very Deep/Vanishing Gradients Problem"
+cleanedstrings[grepl("^architecture", cleanedstrings)] = "Architecture"
+cleanedstrings[grepl("^imagesfaces?", cleanedstrings)] = "Faces"
+cleanedstrings[grepl("embeddings?$", cleanedstrings)] = "Embeddings"
+cleanedstrings[grepl("languagemodels", cleanedstrings)] = "\"Language Models\" - next word prediction and etc"
+cleanedstrings[grepl("^languagetext", cleanedstrings)] = "Text analysis"
+cleanedstrings[grepl("ocr", cleanedstrings)] = "OCR"
+cleanedstrings[grepl("images?(semantic)?segmentation", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
+cleanedstrings[grepl("imagesperpixelprediction", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
+cleanedstrings[grepl("images?retrieval|images?localization", cleanedstrings)] = "Retrieval"
+cleanedstrings[grepl("images?detection", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
+cleanedstrings[grepl("semisupervised", cleanedstrings)] = "Partially supervised training"
+cleanedstrings[grepl("hyperparameters?", cleanedstrings)] = "Hyperparameters techniques"
+cleanedstrings[grepl("imagessimilarity", cleanedstrings)] = "Similarity detection"
+cleanedstrings[grepl("(language)?talkingcomputers", cleanedstrings)] = "Talking Computers"
+cleanedstrings[grepl("representationlearning$", cleanedstrings)] = "Misc Representation Learning"
+cleanedstrings[grepl("alternatedeep", cleanedstrings)] = "Alternate/fringe deep techniques"
+cleanedstrings[grepl("generality", cleanedstrings)] = "Towards generality"
+
+
+
+# add fixed ones
+logical = cleanedstrings %in% categories$name
+sum(is.na(identified))
+identified[logical] = match(cleanedstrings[logical],categories$name)
+sum(is.na(identified))
+
+# see what remains uncategorized
+logical = apply(identified, 1, function(x) sum(!is.na(x)) < 1)
+sum(logical)
+cleanedstrings2 = strtrim(str_trim(str_to_lower(str_replace_all(
+  possible_categories[logical,], "[- //.!?,]", ""))), 50)
+possible_counts = table(cleanedstrings2)
+ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
+ordered_counts[1:20]
+
+# note : application:misc and application:langauge modeling are not real categories. They need to be reclassified under memory
+
+link_df[link_df$category %in% c("application: misc", "application: language modeling"),c("category", "category2")] = c("Memory", "Memory")
+
+```
+
+
+```{r}
+install.packages("e1071")
+library("e1071")
+naiveBayes()
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+

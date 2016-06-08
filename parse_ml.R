@@ -8,36 +8,6 @@ sample_text = c('http://arxiv.org/abs/1602.04062 [abs] using reinforcement learn
 test = c("and and and and and", "fjdfjdand", "and", "", "wemciwomvisoidvj", "and fjfjfjfj and")
   gsub("and", test, ignore.case=TRUE)
 
-
-# deprecated function
-# -----------------------
-# get_possible_categories = function(sample_text) {
-#   matches = gregexpr("(?:,|and|or|maybe|in)? \"(.*?)\"",
-#                      sample_text, ignore.case=TRUE)
-#   possible_categories = vector("list", length(sample_text))
-#   for (i in seq_len(length(sample_text))) {
-#     this_category_set = vector("character", length(matches[[i]]))
-#     if (matches[[i]][1] == -1) {
-#       next
-#     } else {
-#       # get substrings using match indexes + lengths
-#       this_category_set = mapply(
-#         function(mindex, mlen, base_string) {
-#           # get matching substrings
-#           result = substring(base_string, mindex, mindex + mlen - 1)
-#           # get just the stuff in quotation marks
-#           sapply(strsplit(result, "\""),
-#                  function(stupidlist) stupidlist[2])
-#           }, matches[[i]], attr(matches[[i]], "match.length"),
-#         MoreArgs = list(base_string=sample_text[i]))
-#       
-#       possible_categories[[i]] = this_category_set
-#     }
-#   }
-#   return (possible_categories)
-# }
-
-
 library("stringr")
 get_possible_categories = function(sample_text) {
   possible_categories = stringr::str_match_all(sample_text,
@@ -45,10 +15,13 @@ get_possible_categories = function(sample_text) {
   return(sapply(possible_categories, function(x) x[,-1]))
 }
 
-
 possible_categories = get_possible_categories(sample_text)
 ragged_list_to_matrix = function() {}
 rowmax = max(sapply(possible_categories, length))
 
 possible_categories = t(sapply(possible_categories, function(x, rowmax) x[rep(TRUE, rowmax)], rowmax))
 possible_categories
+
+install.packages("e1071")
+library("e1071")
+naiveBayes()
