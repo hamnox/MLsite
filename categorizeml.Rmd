@@ -276,7 +276,7 @@ print(counts,n = nrow(counts))
 
 ```
 
-```{r Categorize Papers}
+```{r Categorize Papers by hand}
 # Inbox and Rubbish Compactor need to be recategorized
 
 # get row indices
@@ -312,7 +312,7 @@ samey = ordered_counts[!is.na(pmatch(names(ordered_counts),
                                category_clean, duplicates.ok=TRUE))]
 sum(samey)
 
-# add identical names
+# add matched names
 identified = matrix(NA, nrow=nrow(possible_categories),
                     ncol=ncol(possible_categories))
 
@@ -325,57 +325,32 @@ cleanedstrings2 = strtrim(str_trim(str_to_lower(str_replace_all(
   possible_categories[is.na(identified[,1]),1], "[- //.!?,]", ""))), 50)
 possible_counts = table(cleanedstrings2)
 ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
-ordered_counts[1:20]
+ordered_counts[1:30]
 
-
-# in future I need to get some language approximation going on
-cleanedstrings[grepl("bio$", cleanedstrings)] = "Bio modeling (and bio context/pure bio papers)"
-cleanedstrings[grepl("3d$", cleanedstrings)] = "3D"
-cleanedstrings[grepl("^bayesian|bayesian$", cleanedstrings)] = "Bayesian Neural Nets"
-cleanedstrings[grepl("^theory", cleanedstrings)] = "Theory about neural network effectiveness"
-cleanedstrings[grepl("video$", cleanedstrings)] = "Video"
-cleanedstrings[grepl("^trainingalgorithms$",cleanedstrings)] = "Optimizers / Learning Algorithms"
-cleanedstrings[grepl("^generative", cleanedstrings)] = "Generative modeling"
-cleanedstrings[grepl("^imagescaptioning$", cleanedstrings)] = "Captioning"
-cleanedstrings[grepl("^convolution(pooling)?$", cleanedstrings)] = "Convolution"
-cleanedstrings[grepl("^safety|safety$", cleanedstrings)] = "AGI Safety/reliable reinforcement learners"
-cleanedstrings[grepl("^applicationscars$", cleanedstrings)] = "Cars"
-cleanedstrings[grepl("^applications?|applications?$", cleanedstrings)] = "Misc applications"
-cleanedstrings[grepl("architecturesverydeep", cleanedstrings)] = "Very Deep/Vanishing Gradients Problem"
-cleanedstrings[grepl("^architecture", cleanedstrings)] = "Architecture"
-cleanedstrings[grepl("^imagesfaces?", cleanedstrings)] = "Faces"
-cleanedstrings[grepl("embeddings?$", cleanedstrings)] = "Embeddings"
-cleanedstrings[grepl("languagemodels", cleanedstrings)] = "\"Language Models\" - next word prediction and etc"
-cleanedstrings[grepl("^languagetext", cleanedstrings)] = "Text analysis"
-cleanedstrings[grepl("ocr", cleanedstrings)] = "OCR"
-cleanedstrings[grepl("images?(semantic)?segmentation", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
-cleanedstrings[grepl("imagesperpixelprediction", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
-cleanedstrings[grepl("images?retrieval|images?localization", cleanedstrings)] = "Retrieval"
-cleanedstrings[grepl("images?detection", cleanedstrings)] = "Image Object Segmentation/Pixelwise classification"
-cleanedstrings[grepl("semisupervised", cleanedstrings)] = "Partially supervised training"
-cleanedstrings[grepl("hyperparameters?", cleanedstrings)] = "Hyperparameters techniques"
-cleanedstrings[grepl("imagessimilarity", cleanedstrings)] = "Similarity detection"
-cleanedstrings[grepl("(language)?talkingcomputers", cleanedstrings)] = "Talking Computers"
-cleanedstrings[grepl("representationlearning$", cleanedstrings)] = "Misc Representation Learning"
-cleanedstrings[grepl("alternatedeep", cleanedstrings)] = "Alternate/fringe deep techniques"
-cleanedstrings[grepl("generality", cleanedstrings)] = "Towards generality"
-
+# remove some of the top level category beginnings
+silenced = cleanedstrings[!is.na(cleanedstrings)]
+cleanedstrings2 = str_replace(cleanedstrings, "^images?|^languages?|^words?|^rl|^unsupervised|^memory|^agi|^misc|^application", "")
+# ignore ones already categorized
+cleanedstrings2[!is.na(identified)] = NA
+cleanedstrings2[nchar(cleanedstrings2) < 2] = NA
+possible_counts = table(cleanedstrings2)
+ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
+samey = ordered_counts[!is.na(pmatch(names(ordered_counts),
+                               category_clean, duplicates.ok=TRUE))]
+sum(samey)
 
 
 # add fixed ones
-logical = cleanedstrings %in% categories$name
+logical = cleanedstrings2 %in% category_clean
 sum(is.na(identified))
-identified[logical] = match(cleanedstrings[logical],categories$name)
+identified[logical] = pmatch(cleanedstrings2[logical],category_clean,
+                             duplicates.ok=TRUE)
 sum(is.na(identified))
 
 # see what remains uncategorized
 logical = apply(identified, 1, function(x) sum(!is.na(x)) < 1)
-sum(logical)
-cleanedstrings2 = strtrim(str_trim(str_to_lower(str_replace_all(
-  possible_categories[logical,], "[- //.!?,]", ""))), 50)
-possible_counts = table(cleanedstrings2)
-ordered_counts = possible_counts[order(possible_counts, decreasing=TRUE)]
-ordered_counts[1:20]
+# percentage with NO categories still
+sum(logical) / nrow(identified)
 
 # note : application:misc and application:langauge modeling are not real categories. They need to be reclassified under memory
 
@@ -385,9 +360,17 @@ link_df[link_df$category %in% c("application: misc", "application: language mode
 
 
 ```{r}
-install.packages("e1071")
+# install.packages("e1071")
 library("e1071")
-naiveBayes()
+# install.packages("caret")
+library("caret")
+
+# define training control
+train_control <- trainControl(method="repeatedcv", number=10)
+# train the model
+corpus()
+
+model <- train(, data=data, trControl=train_control, method="nb", tunelength=15)
 
 
 ```
