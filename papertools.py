@@ -72,6 +72,10 @@ def validate_tags(tags):
         return False
     # tags = [str, ..] or None... can handle a ""
 
+def validate_categories(tags, categorylist):
+    # take in a [str, ...], check whether is a valid category
+    return False
+
 def check_paper(paperobj):
     result = {}
 
@@ -82,7 +86,7 @@ def check_paper(paperobj):
     result['desc'] = validate_desc(paperobj.get('desc',None))
     result['link'] = validate_link(paperobj.get('link', None))
     result['doi'] = validate_doi(paperobj.get('doi', None))
-    result['tags'] = validate_doi(paperobj.get('tags', None))
+    result['tags'] = validate_tags(paperobj.get('tags', None))
 
     for key, item in result.items():
         if item == False:
@@ -166,6 +170,13 @@ def tests():
         "tag2"]) == False
     test_tags()
 
+    def test_categories():
+        assert validate_categories("") == False
+        assert validate_categories([]) == False
+        assert validate_categories(["Images"]) == ["Images"]
+        assert validate_categories(["Not a real category"]) == False
+        assert validate_categories(["Images", "Initialization"]) == ["Images", "Initialization"]
+        assert validate_categories(["Not a real category", "Images"]) == False
 
     def test_check_paper():
         pmin = {'title': 'This Title',
@@ -234,6 +245,7 @@ def tests():
 
     test_check_paper()
     test_split_tags()
+    test_categories()
 
 
 

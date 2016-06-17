@@ -1,5 +1,6 @@
 import psycopg2
 import json
+from papertools import *
 
 myConnection = None
 
@@ -158,7 +159,7 @@ def close_connections():
 
 if __name__ == "__main__":
     login_info = json.load(open("login_info.json","r"))
-    myConnection = load_DB(login_info['testML'])
+    myConnection = load_DB(login_info['ML'])
     print "Test connection made!"
     print "..."
     # setup_tables()

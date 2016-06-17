@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 
-pg_dump ml_db_backup > last_ml_backup
-psql -c 'DROP DATABASE ml_db_backup;'
-psql -c "create database ml_db_backup with encoding = 'UTF8';"
+# old style:
+now=$(date +"%Y%m%d_%H%M")
+pg_dump ml_db > ml_backup_$now
 
-pg_dump -t papers ml_db | psql ml_db_backup
-pg_dump -t tags ml_db | psql ml_db_backup
-pg_dump -t categories ml_db | psql ml_db_backup
+
+# to transfer to a backupdb:
+# psql -U ml_user -c 'DROP DATABASE ml_db_backup;'
+# psql -U ml_user -c "create database ml_db_backup with encoding = 'UTF8';"
+# pg_dump -t note ml_db | psql ml_db_backup
+# pg_dump -t link ml_db | psql ml_db_backup
+# pg_dump -t category ml_db | psql ml_db_backup
+# pg_dump -t tag ml_db | psql ml_db_backup
