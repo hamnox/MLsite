@@ -19,131 +19,84 @@ def load_DB(login_obj):
     # damn this needs to be a thread or something.
     return myConnection
 
-from papertools import *
-def push_paper(paperobj, connection = None):
-    """paperobj {title: str < 512, desc: str, link: str, tags: [str <128], doi: str}-> TypeError, ValueError (Duplication or FieldIndex), psycopg2.error"""
+# def push_paper(paperobj, connection = None):
+#     """paperobj {title: str < 512, desc: str, link: str, tags: [str <128], doi: str}-> TypeError, ValueError (Duplication or FieldIndex), psycopg2.error"""
+#     if not connection:
+#         global myConnection
+#         connection = myConnection
+#     if connection == None:
+#         raise psycopg2.InterfaceError("No connection made")
+# 
+#     checkedpaper = check_paper(paperobj)
+# 
+#     id = None
+#     with connection.cursor() as cur:
+#         cur.execute("""
+#             INSERT INTO papers (title,
+#                                 description,
+#                                 link,
+#                                 doi)
+#             VALUES (%s, %s, %s, %s) RETURNING id
+#             )""", (checkedpaper['title'], checkedpaper['desc'], checkedpaper))
+#         id = cur.fetchone()
+#         if checkedpaper['tags'] and id:
+#             sendstr = cur.mogrify("""INSERT INTO tags (paper, tagname) values (%s""", (id,))
+#             cur.execute(sendstr + ", %s)", checkedpaper['tags'])
+#     connection.commit()
+#     return id
+# 
+# def fetched_to_papers(fetched):
+#     """[(id, title, desc, link, [tags], doi)...] -> {id: {paperfields}}"""
+#     papers = {}
+#     for paper_tuple in fetched:
+#         id = paper_tuple[0]
+#         tags = paper_tuple[4]
+#         if tags == [None]:
+#             tags = None
+#         papers[id] = {'title': paper_tuple[1],
+#                       'desc': paper_tuple[2],
+#                       'link':paper_tuple[3],
+#                       'tags': tags,
+#                       'doi':paper_tuple[5]}
+#         # forgot to return value
+#     return papers
+# 
+def get_all_notes(connection = None):
     if not connection:
         global myConnection
         connection = myConnection
     if connection == None:
         raise psycopg2.InterfaceError("No connection made")
 
-    checkedpaper = check_paper(paperobj)
-
-    id = None
+    notes = {}
     with connection.cursor() as cur:
         cur.execute("""
-            INSERT INTO papers (title,
-                                description,
-                                link,
-                                doi)
-            VALUES (%s, %s, %s, %s) RETURNING id
-            )""", (checkedpaper['title'], checkedpaper['desc'], checkedpaper))
-        id = cur.fetchone()
-        if checkedpaper['tags'] and id:
-            sendstr = cur.mogrify("""INSERT INTO tags (paper, tagname) values (%s""", (id,))
-            cur.execute(sendstr + ", %s)", checkedpaper['tags'])
-    connection.commit()
-    return id
-
-def fetched_to_papers(fetched):
-    """[(id, title, desc, link, [tags], doi)...] -> {id: {paperfields}}"""
-    papers = {}
-    for paper_tuple in fetched:
-        id = paper_tuple[0]
-        tags = paper_tuple[4]
-        if tags == [None]:
-            tags = None
-        papers[id] = {'title': paper_tuple[1],
-                      'desc': paper_tuple[2],
-                      'link':paper_tuple[3],
-                      'tags': tags,
-                      'doi':paper_tuple[5]}
-        # forgot to return value
-    return papers
-
-def get_all_papers(connection = None):
-    if not connection:
-        global myConnection
-        connection = myConnection
-    if connection == None:
-        raise psycopg2.InterfaceError("No connection made")
-
-    papers = {}
-    with connection.cursor() as cur:
-        cur.execute("""
-            SELECT papers.id,
-                   papers.title,
-                   papers.description,
-                   papers.link,
-                   array_agg(tags.tagname),
-                   papers.doi
+            SELECT note.id,
+                   note.name,
+                   note.description,
+                   link.url,
+                   array_agg(tag.tagname),
+                   array_agg(category.name
             FROM papers LEFT JOIN tags on tags.paper = papers.id
             GROUP BY papers.id""")
         return fetched_to_papers(cur.fetchall())
             # have to look up how to aggregate tags
 
-def setup_tables(connection = None):
-    if not connection:
-        global myConnection
-        connection = myConnection
-    if connection == None:
-        raise psycopg2.InterfaceError("No connection made")
-    with connection.cursor() as cur:
-        cur.execute("""
-            create table if not exists papers (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                description TEXT DEFAULT NULL,
-                link TEXT DEFAULT NULL,
-                doi TEXT DEFAULT NULL,
-                added timestamp DEFAULT CURRENT_TIMESTAMP,
-                updated timestamp DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (link, doi),
-                CHECK (link IS NOT NULL or doi IS NOT NULL)
-            )""")
-        cur.execute("""
-            create table if not exists categories (
-                id SERIAL,
-                name varchar(128) PRIMARY KEY,
-                description TEXT DEFAULT NULL,
-                parent varchar(128) DEFAULT NULL references categories(name) ON DELETE SET NULL,
-                added timestamp DEFAULT CURRENT_TIMESTAMP,
-                updated timestamp DEFAULT CURRENT_TIMESTAMP
-        )""")
-        cur.execute("""
-            create table if not exists tags (
-                id SERIAL,
-                paper integer NOT NULL REFERENCES papers (id) ON DELETE CASCADE,
-                tagname varchar(128) NOT NULL,
-                added timestamp DEFAULT CURRENT_TIMESTAMP,
-                updated timestamp DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (paper, tagname)
-            )""")
-        connection.commit()
-
-def load_test_papers(connection=None):
-        if not connection:
-            global myConnection
-            connection = myConnection
-        if connection == None:
-            raise psycopg2.InterfaceError("No connection made")
-        with connection.cursor() as cur:
-            cur.executemany("""
-                insert into papers (title, description, link)
-                values (%s, %s, %s)""", (("Title 1", None, "http://1"),
-                                         ("Title 2", "Lolblah", "http://2"),
-                                         ("Title 3", "LLOL", "http://3")))
-            cur.execute("""
-                insert into papers (title, doi)
-                values ('Title 4', '1023.234123/blasdh234234')""")
-            cur.execute("""
-                insert into tags (paper, tagname)
-                values (2, 'taggedy tag'), (2, 'super taggedy'),
-                       (2, 'tagalag'), (4, 'taggedy tag')""")
-        connection.commit()
-
-
+def fetched_to_notes(fetched):
+    """[(id, title, desc, link, [tags], doi)...] -> {id: {notefields}}"""
+    notes = {}
+    for note_tuple in fetched:
+        id = note_tuple[0]
+        tags = note_tuple[4]
+        if tags == [None]:
+            tags = None
+        notes[id] = {'title': note_tuple[1],
+                      'desc': note_tuple[2],
+                      'link': note_tuple[3],
+                      'tags': tags,
+                      'doi':  note_tuple[5]}
+        # forgot to return value
+    return notes
 
 import atexit
 @atexit.register

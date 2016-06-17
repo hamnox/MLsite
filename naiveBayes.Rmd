@@ -1,0 +1,196 @@
+---
+title: "Naive Bayes ML"
+author: "Melanie Heisey"
+date: "June 9, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Load Data}
+# install.packages("e1071")
+# install.packages("caret")
+library("caret")
+library("tm")
+library("rjson")
+library("RPostgreSQL")
+
+# separate categorized
+login_info = fromJSON(file="login_info.json")
+db = login_info$ML$database
+host = login_info$hostname
+user = login_info$username
+pw = login_info$password
+
+driver = dbDriver("PostgreSQL")
+con = dbConnect(driver, dbname=db,
+                host = host,
+                port = 5432,
+                user = user,
+                password = pw)
+
+dbExistsTable(con, "category") & dbExistsTable(con, "note") & dbExistsTable(con, "link")
+datadf = dbGetQuery(con, "
+SELECT note.description, tag.category, note.id FROM tag
+JOIN note ON tag.note = note.id
+         AND tag.category IS NOT NULL")
+
+categorydf = dbGetQuery(con, "
+SELECT c1.id, c1.name, coalesce(c2.id, c1.id) AS meta,
+  (coalesce(c2.name,c1.name) NOT IN ('Inbox','Rubbish Compactor')) as use
+FROM category c1
+LEFT JOIN category c2
+ON c1.parent=c2.id")
+
+dbDisconnect(con)
+dbUnloadDriver(driver)
+```
+
+```{r View Data}
+library(tm)
+library(wordcloud)
+
+makeWordCloud <- function(documents, n=100) {
+  # stolen from Exploring the NIPS 2015 Papers: Ben Hamner, Kaggle
+  # VectorSource interprets each element into a tm document
+  # Corpus takes a tm collection of documents, makes a 'corpus'
+  corpus = Corpus(VectorSource(tolower(documents)))
+  #corpus = tm_map(corpus, removePunctuation)
+  corpus = tm_map(corpus, removeWords, stopwords("english"))
+  
+  # returns the frequencies of diff. words in each document
+  frequencies = DocumentTermMatrix(corpus)
+  word_frequencies = as.data.frame(as.matrix(frequencies))
+  
+  words <- colnames(word_frequencies)
+  freq <- colSums(word_frequencies)
+  wordcloud(words, freq,
+            min.freq=sort(freq, decreasing=TRUE)[[n]],
+            colors=brewer.pal(8, "Dark2"),
+            random.color=TRUE)
+}
+makeWordCloud(datadf$description, 100)
+
+usablecategories = categorydf$id[categorydf$use]
+traindf = datadf[datadf$id %in% usablecategories,]
+
+makeWordCloud(traindf, 60)
+```
+
+```{r Categories}
+# check the counts of each category
+counts = table(traindf$category)
+# names(counts) = categorydf$name[ match(as.numeric(names(counts)), categorydf$id)]
+counts
+
+# see if it makes sense to use the category a level up
+recounts = counts[counts < 3]
+traindf$meta = categorydf$meta[match(traindf$category,
+                                    categorydf$id)]
+
+traindf$bettercategory = traindf$category
+for (badcat in names(counts[counts < 3])) {
+  logical = traindf$category == as.integer(badcat)
+  traindf$bettercategory[logical] = traindf$meta[logical]
+}
+
+table(traindf$bettercategory)
+
+
+# # put single-item categories in their own thing
+# traindf[traindf$bettercategory %in% c(3:4, 8:16, 18:23),"bettercategory"] = 100
+
+```
+
+```{r Natural Language Processing}
+
+library("RWeka")
+mytokenizer = function(x) {
+  NGramTokenizer(x, control=RWeka::Weka_control(min = 1, max = 3))
+}
+
+corpus = Corpus(VectorSource(tolower(traindf$description)))
+#corpus = tm_map(corpus, removeWords,
+#                c("should go in \"", "also \"", "maybe \""))
+corpus = tm_map(corpus, removePunctuation, preserve_intra_word_dashes = FALSE)
+
+
+frequencies = DocumentTermMatrix(corpus,
+                                 control=list(
+                                   stopwords=FALSE,
+                                   stemDocument=TRUE,
+                                   tokenize=mytokenizer
+                                 ))
+words <- colnames(as.matrix(frequencies))
+freq <- colSums(as.matrix(frequencies))
+
+ggplot(data.frame(freq=log(freq)), aes(freq)) + geom_histogram(binwidth=.1)
+
+silenced = data.frame(freq=freq[order(freq, decreasing=TRUE)])
+silenced$name = factor(rownames(silenced), levels=unique(rownames(silenced)))
+ggplot(silenced[silenced$freq > 2,], aes(name, freq)) + geom_bar(stat="identity")
+# based on this, I'mma say anything involved more than 5 times counts
+sum(freq[freq > 1])/ sum(freq) # 64% of words
+
+# per document frequencies
+# pdfrequencies = frequencies
+# pdfrequencies$v = as.numeric(frequencies$v > 0)
+# 
+# freq <- colSums(as.matrix(pdfrequencies))
+# words <- colnames(as.matrix(pdfrequencies))
+# head(freq[order(freq, decreasing=TRUE)],10)
+# sum(freq[freq > 1]) / sum(freq) # 21.2% of words
+# ggplot(data.frame(freq=freq[freq > 1]), aes(freq)) + geom_histogram(binwidth=1)
+
+# freq <- colSums(as.matrix(pdfrequencies))
+#frequencies = frequencies[,freq > 1]
+
+freq <- colSums(as.matrix(frequencies))
+words <- colnames(as.matrix(frequencies))
+
+```
+
+```{r}
+# tried naive bayes, wasn't working
+
+# define training control
+train_control <- trainControl(method="repeatedcv", repeats=3, number=10, verboseIter=TRUE)
+# train the model
+
+safewords = words
+for (subset in split(as.data.frame(as.matrix(frequencies)), factor(traindf$bettercategory))) {
+  print("eh")
+  silenced = sapply(subset, var)
+  safewords = safewords[! safewords %in% names(silenced)[silenced==0]]
+  print(length(safewords))
+}
+
+model <- train(x=as.matrix(frequencies), y=as.factor(traindf$bettercategory), trControl=train_control, method="parRF", tuneLength = 10)
+
+logical = order(model$finalModel$importance)
+silenced = model$finalModel$importance[logical]
+names(silenced) = rownames(model$finalModel$importance)[logical]
+silenced
+
+model$results
+ggplot(data.frame()) + geom_point(aes(traindf$bettercategory,
+   as.numeric(as.character(model$finalModel$predicted))))
+
+# yeah this sucks :(
+# perhaps hclust would work better.
+
+```
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
