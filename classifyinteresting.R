@@ -2,6 +2,7 @@
 # this is the file in which I actually work with datas
 library(rjson)
 library(RPostgreSQL)
+library("ggplot2")
 
 setwd("~/projects/categorizeML/")
 login_info = fromJSON(file="login_info.json")
@@ -20,8 +21,8 @@ con = dbConnect(driver, dbname=db,
 
 # take non-neural stuff
 dbarxivs = dbGetQuery(con, "SELECT link.note, link.url FROM link
-LEFT JOIN tag ON link.note = tag.note
-WHERE link.url LIKE '%arxiv%' AND NOT tagname LIKE '%non%'")
+                      LEFT JOIN tag ON link.note = tag.note
+                      WHERE link.url LIKE '%arxiv%' AND NOT tagname LIKE '%non%'")
 # try to parse these
 library("stringr")
 dbarxivs$uri = str_match(dbarxivs$url, "arxiv.org/.../(\\d\\d\\d\\d[.]\\d\\d\\d\\d\\d?)(?:v\\d)?(?:[.]pdf)?$")[,2]
@@ -37,35 +38,35 @@ nrow(dbarxivs) - length(unique(dbarxivs$uri))
 
 # import abstracts
 abs = dbGetQuery(con,"SELECT title, summary, arxivid, doi, link,
-               authorsaffil, categoryterms,
-                published FROM paper")
+                 authorsaffil, categoryterms,
+                 published FROM paper")
 
 dbDisconnect(con)
 dbUnloadDriver(driver)
 
 # label as in-interesting or not
-  # check my db pull against arxiv pull
-  sum(!dbarxivs$uri %in% abs$arxivid)
-  dbarxivs[!dbarxivs$uri %in% abs$arxivid,]
-  
-  # get url for more
-  # paste0("http://export.arxiv.org/api/query?search_query=",
-  #   paste0("id:", mismatch$uri, collapse=" OR "),
-  # "&start=0&max_results=30")
+# check my db pull against arxiv pull
+sum(!dbarxivs$uri %in% abs$arxivid)
+dbarxivs[!dbarxivs$uri %in% abs$arxivid,]
 
-  # check against my db pull
-  abs$interest = abs$arxivid %in% dbarxivs$uri
-  # check against lahwran's gist positive examples
-  temp = read.delim("metadata/names_positive_examples",colClasses = "character", header=FALSE)
-  
-  # 8 differences, from non-neural, except 15.05008
-  sum(abs$arxivid %in% temp$V1 != abs$interest)
-  abs$arxivid[abs$arxivid %in% temp$V1 != abs$interest]
+# get url for more
+# paste0("http://export.arxiv.org/api/query?search_query=",
+#   paste0("id:", mismatch$uri, collapse=" OR "),
+# "&start=0&max_results=30")
 
- # count the confusion matrix for base rate
- table(abs$interest) # 1633 false, 1327 true. 44.83% baseline
+# check against my db pull
+abs$interest = abs$arxivid %in% dbarxivs$uri
+# check against lahwran's gist positive examples
+temp = read.delim("metadata/names_positive_examples",colClasses = "character", header=FALSE)
 
-# get document term matrix for summary
+# 8 differences, from non-neural, except 15.05008
+sum(abs$arxivid %in% temp$V1 != abs$interest)
+abs$arxivid[abs$arxivid %in% temp$V1 != abs$interest]
+
+# count the confusion matrix for base rate
+table(abs$interest) # 1633 false, 1327 true. 44.83% baseline
+
+
 library(tm)
 corpus <- Corpus(VectorSource(tolower(abs$summary)))
 corpus <- tm_map(corpus, removePunctuation)
@@ -78,24 +79,33 @@ corpus <- tm_map(corpus, stripWhitespace)
 BigramTokenizer <- function(x) {
   unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)}
 
-set.seed(3506)
-ttsplit = (sample(seq(corpus), length(corpus)) %% 20) == 7
-testcorp = corpus[ttsplit]
-traincorp = corpus[!ttsplit]
-trainabs = abs[!ttsplit,]
-testabs = abs[ttsplit,]
-
-frequencies = DocumentTermMatrix(traincorp, control=list(tokenize = "words"))
+frequencies = DocumentTermMatrix(corpus, control=list(tokenize = "words"))
 #frequencies2 = DocumentTermMatrix(traincorp, control=list(tokenize = BigramTokenizer))
-frequencies
 
 # visualize cutoff points
-sparseness = colSums(as.matrix(frequencies))/nrow(frequencies)
-sparseness = data.frame(x=seq(0,1,.01), y=sapply(seq(0,1,.01), function(x) sum(sparseness > x)))
-ggplot(sparseness[2:40,], aes(x=x, y=y)) + geom_point()
+sparseness = colSums(as.matrix(frequencies) == 0)/nrow(frequencies)
+sparseness = data.frame(x=seq(0,1,.01), y=sapply(seq(0,1,.01), function(x) sum(sparseness > x)/ncol(frequencies)))
+ggplot(sparseness[50:100,], aes(x=x, y=y)) + geom_point()
 
-frequencies.sparse = removeSparseTerms(frequencies, 0.93)
+frequencies.sparse = removeSparseTerms(frequencies, 0.91)
 
+titles <- Corpus(VectorSource(tolower(abs$title)))
+titles <- tm_map(titles, removePunctuation)
+titles <- tm_map(titles, removeWords, stopwords("english"))
+titles <- tm_map(titles, stemDocument)
+titles <- tm_map(titles, stripWhitespace)
+titlefreq = DocumentTermMatrix(titles, control=list(tokenize = "words"))
+sparseness = colSums(as.matrix(titlefreq) == 0)/nrow(titlefreq)
+sparseness = data.frame(x=seq(0,1,.01), y=sapply(seq(0,1,.01), function(x) sum(sparseness > x)/ncol(frequencies)))
+ggplot(sparseness[50:100,], aes(x=x, y=y)) + geom_point()
+titlefreq
+titlefreq.sparse = removeSparseTerms(titlefreq, 0.96)
+
+  # get url for more
+  listofids = c("1203.2928")
+  paste0("http://export.arxiv.org/api/query?search_query=",
+    paste0("id:", listofids, collapse=" OR "),
+  "&start=0&max_results=",length(listofids)+2)
 
 # helper function
 ragged_match = function(ragged_list) {
@@ -111,150 +121,115 @@ ragged_match = function(ragged_list) {
   return(results)
 }
 
-catterms = str_match_all(trainabs$categoryterms, "[{\",; ]((([A-Z])\\.[0-9]*)(?:\\.[0-9m]*)?)(?:\\.[0-9a-z])?(?=[ \",;}])|[{\",; ](((\\d\\d)[-A-Z])[0-9xX][0-9xX])(?=[ }\",;])|[{, ](([-a-zA-Z]*)(?:\\.[-a-zA-Z]*)?)(?=[ },])")
+
+
+catterms = str_match_all(abs$categoryterms, "[{\",; ]((([A-Z])\\.[0-9]*)(?:\\.[0-9m]*)?)(?:\\.[0-9a-z])?(?=[ \",;}])|[{\",; ](((\\d\\d)[-A-Z])[0-9xX][0-9xX])(?=[ }\",;])|[{, ](([-a-zA-Z]*)(?:\\.[-a-zA-Z]*)?)(?=[ },])")
 
 categories = ragged_match(catterms)
 # 1602.01323 (row 1506) needs to add to 68U15, was mistyped as 6U815
-seq_len(nrow(trainabs))[grepl("6U8",trainabs$categoryterms)]
-categories[1430,"68U"] = 1
-categories[1430,"68"] = 1
+seq_len(nrow(abs))[grepl("6U8",abs$categoryterms)]
+categories[1506,"68U"] = 1
+categories[1506,"68"] = 1
 # remove Primary, Secondary, ""
 categories = categories[,!colnames(categories) %in% c("theory",
-                        "Secondary", "")]
-dim(categories) # 456 now
+                                                      "Secondary", "")]
+dim(categories) # 472 now
 
 # visualize cutoff points
 sparseness = colSums(categories) / nrow(categories)
-plotty = data.frame(x=seq(0,.1,.001), y=sapply(seq(0,.1,.001), function(x) sum(sparseness > x)))
-ggplot(plotty[1:20,], aes(x=x, y=y)) + geom_point()
-categories = categories[,sparseness > 0.003] # 79 categories
+plotty = data.frame(x=seq(0,.1,.001), y=sapply(seq(0,.1,.001), function(x) sum(sparseness < x)/nrow(categories)))
+ggplot(plotty[1:50,], aes(x=x, y=y)) + geom_point()
+categories = categories[,sparseness > 0.005] # 56 categories
+
 
 
 library("Matrix")
 # dummy authors
-  authors = str_match_all(trainabs$authorsaffil, "\\{+\"?(.*?)\"?,(?:NULL|\"?(.*?)?\"?)\\}+")
-  authorlist = sort(str_trim(unique(unlist(sapply(authors, function(x) x[,2])))))
-  
-  # construct a sparse matrix for authors
-  i = c()
-  j = c()
-  for (rown in 1:length(authors)) {
-    i = c(i, rep(rown, nrow(authors[[rown]])))
-    j = c(j, match(str_trim(authors[[rown]][,2]),authorlist))
-  }
-  authors = sparseMatrix(i=i, j=j)
-  colnames(authors) = authorlist
-  # plot distribution of # papers contributed
-  
-  library("ggplot2")
-  ggplot(data.frame(), aes(x=colSums(authors))) + geom_histogram()
-  # 3 to 5 looks quite good, going to check how many actual papers that eliminates
+authors = str_match_all(abs$authorsaffil, "\\{+\"?(.*?)\"?,(?:NULL|\"?(.*?)?\"?)\\}+")
+authorlist = sort(str_trim(unique(unlist(sapply(authors, function(x) x[,2])))))
 
+# construct a sparse matrix for authors
+i = c()
+j = c()
+for (rown in 1:length(authors)) {
+  i = c(i, rep(rown, nrow(authors[[rown]])))
+  j = c(j, match(str_trim(authors[[rown]][,2]),authorlist))
+}
+authors = sparseMatrix(i=i, j=j)
+colnames(authors) = authorlist
+
+# visualize cutoff points
 sparseness = colSums(authors) / nrow(authors)
-plotty = data.frame(x=seq(0,.1,.001), y=sapply(seq(0,.1,.001), function(x) sum(sparseness > x)))
-ggplot(plotty[2:20,], aes(x=x, y=y)) + geom_point()
-authors = authors[,sparseness > 0.002] # 85 categories
-
-# prepend dummied categories, authors
-  inputvars = cbind(as.matrix(authors),categories, as.matrix(frequencies.sparse))
-  # make sure no duplicated names
-  sum(duplicated(c(colnames(authors), colnames(categories), colnames(frequencies.sparse))))
-
-# naivebayes simple run
-  library("klaR")
-  # remove zero variances
-  tval = apply(inputvars[trainabs$interest,], 2, var)
-  fval = apply(inputvars[!trainabs$interest,], 2, var)
-  # 30 to be removed
-  naiveinput = inputvars[,tval > 0 & fval > 0]
-  
-  model = NaiveBayes(naiveinput, factor(trainabs$interest))
-  # get predictions matrix: is it better than base rate?
-  results = predict(model)
-
-library("pROC")
-roc(trainabs$interest, results$posterior[,1], plot=TRUE)
-#0.7914
-roc(trainabs$interest, results$posterior[,2], plot=TRUE)
-#0.7993
+plotty = data.frame(x=seq(0,.01,.0001), y=sapply(seq(0,.01,.0001), function(x) sum(sparseness < x)/nrow(authors)))
+ggplot(plotty[1:25,], aes(x=x, y=y)) + geom_point()
 
 
-sum((results$class == "TRUE") == trainabs$interest)/nrow(trainabs) # 76.81%
-
-accuracy = sapply(seq(0,1,.05), function(x) sum((results$posterior[,2] > x) == trainabs$interest, na.rm=TRUE)/nrow(trainabs))
-ggplot(data.frame()) + geom_point(aes(seq(0,1,.05), accuracy))
-sum((results$posterior[,2] > .76)==trainabs$interest, na.rm = TRUE)/nrow(trainabs) # 76.849%
+authors = authors[,sparseness > 0.002] # 165 authors
 
 
-library("glmnet")
-scaled_input = scale(inputvars)
+numauthors = data.frame(NUMAUTHORS = rowSums(authors))
 
-model = cv.glmnet(scaled_input, trainabs$interest, family="binomial", type.measure="auc")
-#model = cv.glmnet(scaled_input, trainabs$interest, family="binomial", type.measure="auc")
 
-results = predict(model, newx = scaled_input,
-                  s=model$lambda.min, type="response")
-library("pROC")
-roc(trainabs$interest, as.numeric(results), plot=TRUE)
-#0.9129 auc
 
-accuracy = sapply(seq(.2,.6,.01), function(x) sum((results > x) == trainabs$interest)/nrow(trainabs))
-ggplot(data.frame()) + geom_point(aes(x=seq(.2,.6,.01), y=accuracy))
 
-sum((results > .41) == trainabs$interest)/nrow(trainabs)
-# 85.4% accuracy
 
-# try this with test data, see below random forests for generating
-scaledtestinputvars = scale(testinputvars,
-                center = attr(scaled_input, "scaled:center"),
-                scale = attr(scaled_input, "scaled:scale"))
-results = predict(model, newx=scaledtestinputvars, type="response")
-roc(testabs$interest, as.numeric(results), plot=TRUE) # 0.881
-accuracy = sapply(seq(.1,.9,.01), function(x) sum((results > x) == testabs$interest)/nrow(testabs))
-ggplot(data.frame()) + geom_point(aes(x=seq(.1,.9,.01), y=accuracy), alpha=0.5) # 86.48% accuracy
 
-# try a random forest
-library("randomForest")
-model = randomForest(scaled_input, y=trainabs$interest, ntree=50)
 
-sum((model$predicted > .5) == trainabs$interest)/nrow(trainabs)
-#82%
 
-roc(trainabs$interest, model$predicted, plot=TRUE) # auc .8656
-model$importance[order(model$importance),]
-# most important are neural, network, neep, covolut, train, task, learn, category-cs.NE, recurr, dataset, architectur....
+# make sure no duplicated names
+intitles = titlefreq.sparse
+colnames(intitles) = paste0("TITLE_",colnames(intitles))
 
-save(scaled_input, categories, authors, frequencies.sparse, file = "savestuff.rdata")
+sum(duplicated(c(
+  colnames(authors),
+  "NUMAUTHORS",
+  colnames(categories),
+  colnames(frequencies.sparse),
+  colnames(intitles))))
+
+# prepend dummied stuff
+inputvars = cbind(as.matrix(authors), numauthors, categories, as.matrix(frequencies.sparse), as.matrix(intitles))
+# 323 variables
+
+load("savestuff.rdata")
+#save(inputvars, abs, dbarxivs, file="savestuff.rdata")
 
 library("caret")
-library("doParallel")
+library("doMC")
 #??do
-doMC::registerDoMC(cores=4)
+doMC::registerDoMC(cores=6)
+registerDoMC(cores = 3)
 
 
-set.seed(114)
+set.seed(47)
 control = trainControl(method="repeatedcv", repeats=3, number=10,
                        verboseIter=TRUE, allowParallel = TRUE)
                        #savePredictions = "final")
 
-caret_fit = train(inputvars, factor(trainabs$interest,
-                                    labels=c("fawse", "twue")),
+caret_fit = train(inputvars, factor(abs$interest,
+                                    labels=c("False", "True")),
                   trControl=control, method="parRF",
                   tuneLength=10, metric="Accuracy")
 
-imps = caret_fit$finalModel$importance
-imps = imps[order(imps),]
-plot(imps)
-results = predict(caret_fit, type="prob")
 
-accuracy = sapply(seq(.1,.9,.01), function(x) sum((results[,1] < x) == trainabs$interest)/nrow(trainabs))
-accuracy2 = sapply(seq(.1,.9,.01), function(x) sum((results[,2] > x) == trainabs$interest)/nrow(trainabs))
-ggplot(data.frame()) + geom_point(aes(x=seq(.1,.9,.01), y=accuracy), alpha=0.5) + geom_point(aes(x=seq(.1,.9,.01)), y=accuracy2, color="red")
-# woah 100% accuracy... let's try with test shall we?
 
-testfrequencies = DocumentTermMatrix(testcorp, control=list(tokenize = "words", dictionary=colnames(frequencies.sparse)))
 
+
+
+
+
+
+
+
+# authors = 1-104
+# numauthors = 105
+# category = 106-161
+# words = 162-289
+# TITLE = 290-301
 # get test authors
+
+
+
 testauthors = str_match_all(testabs$authorsaffil, "\\{+\"?(.*?)\"?,(?:NULL|\"?(.*?)?\"?)\\}+")
 
 # construct a sparse matrix for testauthors
