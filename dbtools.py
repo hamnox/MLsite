@@ -26,9 +26,9 @@ def load_DB(login_obj):
 #         connection = myConnection
 #     if connection == None:
 #         raise psycopg2.InterfaceError("No connection made")
-# 
+#
 #     checkedpaper = check_paper(paperobj)
-# 
+#
 #     id = None
 #     with connection.cursor() as cur:
 #         cur.execute("""
@@ -70,33 +70,49 @@ def get_all_notes(connection = None):
 
     notes = {}
     with connection.cursor() as cur:
+        # cur.execute("""
+        #     SELECT note.id,
+        #            note.name,
+        #            note.description,
+        #            link.url,
+        #            array_agg(tag.tagname),
+        #            array_agg(category.name)
+        #     FROM note LEFT JOIN tag ON tag.note = note.id
+        #             LEFT JOIN category ON tag.category = category.id
+        #             LEFT JOIN link ON note.id = link.note
+        #     GROUP BY note.id""")
         cur.execute("""
-            SELECT note.id,
-                   note.name,
-                   note.description,
-                   link.url,
-                   array_agg(tag.tagname),
-                   array_agg(category.name
-            FROM papers LEFT JOIN tags on tags.paper = papers.id
-            GROUP BY papers.id""")
-        return fetched_to_papers(cur.fetchall())
+                SELECT note.id,
+                       note.name,
+                       note.description,
+                       array_agg(link.url),
+                       array_agg(tag.tagname)
+                FROM note LEFT JOIN tag ON tag.note = note.id
+                        LEFT JOIN link ON note.id = link.note
+                GROUP BY note.id, link.url""")
+        return fetched_to_notes(cur.fetchall())
             # have to look up how to aggregate tags
+
+def get_rid_of_nones(l):
+    return_list = []
+    for item in l:
+        if not item:
+            return_list.append(item)
+    if return_list == []:
+        return None
+    else:
+        return return_list
 
 def fetched_to_notes(fetched):
     """[(id, title, desc, link, [tags], doi)...] -> {id: {notefields}}"""
     notes = {}
     for note_tuple in fetched:
         id = note_tuple[0]
-        tags = note_tuple[4]
-        if tags == [None]:
-            tags = None
         notes[id] = {'title': note_tuple[1],
                       'desc': note_tuple[2],
-                      'link': note_tuple[3],
-                      'tags': tags,
-                      'doi':  note_tuple[5]}
-        # forgot to return value
-    return notes
+                      'link': get_rid_of_nones(note_tuple[3]),
+                      'tags': get_rid_of_nones(note_tuple[4])}
+    return notes.items()[1:10]
 
 import atexit
 @atexit.register
@@ -115,6 +131,7 @@ if __name__ == "__main__":
     myConnection = load_DB(login_info['ML'])
     print "Test connection made!"
     print "..."
+    print get_all_notes(myConnection)
     # setup_tables()
     # print "Tables set up!"
     # load_test_papers()

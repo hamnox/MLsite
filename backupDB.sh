@@ -12,3 +12,4 @@ pg_dump ml_db > ml_backup_$now
 # pg_dump -t link ml_db | psql ml_db_backup
 # pg_dump -t category ml_db | psql ml_db_backup
 # pg_dump -t tag ml_db | psql ml_db_backup
+# pg_dump -t paper ml_db | psql ml_db_backup
