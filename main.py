@@ -1,5 +1,5 @@
 from flask import Flask, request, url_for, render_template
-from dbtools import load_DB, get_all_papers, push_paper
+from dbtools import load_DB, get_all_notes
 from papertools import split_tags
 import json
 
@@ -11,21 +11,21 @@ myConnection = load_DB(login_info['ML'])
 @app.route('/')
 def get_all():
     retval = ""
-    papers = get_all_papers(myConnection)
-    if not papers:
+    notes = get_all_notes(myConnection)
+    if not notes:
         return "No papers here"
-    for id, paper in papers.items():
+    for id, note in notes.items():
         addon = """
             <article id="%s"><h3 id= >%s</h3>
             <div class="desc">%s</div>
             <div class="link">%s</div>
             <div class="tags">%s</div>
             <div class="doi">%s</div>
-            </article>""" % (id, paper['title'],
-                                 paper['desc'],
-                                 paper['link'],
-                                 paper['tags'],
-                                 paper['doi'])
+            </article>""" % (id, note['title'],
+                                 note['desc'],
+                                 note['link'],
+                                 note['tags'],
+                                 note['doi'])
 
         retval = retval + addon
 
