@@ -105,7 +105,7 @@ myConnection.close()
 import dbtools
 
 login_info = json.load(open("login_info.json","r"))
-dbtools.load_DB(login_info['testML'])
+dbtools.load_db(login_info['testML'])
     
 
 # TODO: find the thing that opens on exist, use it to close the connection

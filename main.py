@@ -1,35 +1,33 @@
 from flask import Flask, request, url_for, render_template
-from dbtools import load_DB, get_all_notes
+from dbtools import load_db, get_all_notes
 from papertools import split_tags
 import json
 
 app = Flask(__name__)
 
 login_info = json.load(open("login_info.json","r"))
-myConnection = load_DB(login_info['ML'])
+myConnection = load_db(login_info['ML'])
 
 @app.route('/')
 def get_all():
-    retval = ""
+    return_val = ""
     notes = get_all_notes(myConnection)
     if not notes:
         return "No papers here"
-    for id, note in notes.items():
-        addon = """
-            <article id="%s"><h3 id= >%s</h3>
+    for id, note in notes:
+        add_on = """
+            <article id="%s"><h3>%s</h3>
             <div class="desc">%s</div>
             <div class="link">%s</div>
             <div class="tags">%s</div>
-            <div class="doi">%s</div>
             </article>""" % (id, note['title'],
                                  note['desc'],
-                                 note['link'],
-                                 note['tags'],
-                                 note['doi'])
+                                 note['urls'],
+                                 note['tags'])
 
-        retval = retval + addon
+        return_val += add_on
 
-    return "<html>%s</html>" % retval
+    return "<html>%s</html>" % return_val
 # TODO: make a table
 
 @app.route('/make', methods=["POST","GET"])
@@ -48,7 +46,6 @@ def serve():
             return e
     else:
         return render_template('MakePaperForm.html')
-        
 
 import atexit
 @atexit.register

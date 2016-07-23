@@ -1,10 +1,11 @@
 import psycopg2
 import json
+import atexit
 from papertools import *
 
 myConnection = None
 
-def load_DB(login_obj):
+def load_db(login_obj):
     global myConnection
     """{'hostname'=str, 'username'=str, 'password'=str, 'database'=str}"""
     # TODO: also let it use the host and user and db strings
@@ -18,6 +19,22 @@ def load_DB(login_obj):
                                     dbname=login_obj['database'])
     # damn this needs to be a thread or something.
     return myConnection
+
+# function stub
+def push_note(noteobj, connection = None):
+   # note.id,
+   # note.name,
+   # note.description,
+   # link.url,
+   # array_agg(tag.tagname),
+   # array_agg(category.name)
+    return 0
+"""{'id': 0,
+'name': 'Stub note',
+'desc': 'Stub description',
+'link': 'http://www.stub.stub',
+'tags': ['Stub', 'Incomplete']}"""
+# TODO: make a test for pushnote, then finish
 
 # def push_paper(paperobj, connection = None):
 #     """paperobj {title: str < 512, desc: str, link: str, tags: [str <128], doi: str}-> TypeError, ValueError (Duplication or FieldIndex), psycopg2.error"""
@@ -60,7 +77,9 @@ def load_DB(login_obj):
 #                       'doi':paper_tuple[5]}
 #         # forgot to return value
 #     return papers
-# 
+#
+
+
 def get_all_notes(connection = None):
     if not connection:
         global myConnection
@@ -93,15 +112,17 @@ def get_all_notes(connection = None):
         return fetched_to_notes(cur.fetchall())
             # have to look up how to aggregate tags
 
+
 def get_rid_of_nones(l):
     return_list = []
     for item in l:
-        if not item:
+        if item != None:
             return_list.append(item)
     if return_list == []:
         return None
     else:
         return return_list
+
 
 def fetched_to_notes(fetched):
     """[(id, title, desc, link, [tags], doi)...] -> {id: {notefields}}"""
@@ -110,11 +131,11 @@ def fetched_to_notes(fetched):
         id = note_tuple[0]
         notes[id] = {'title': note_tuple[1],
                       'desc': note_tuple[2],
-                      'link': get_rid_of_nones(note_tuple[3]),
+                      'urls': get_rid_of_nones(note_tuple[3]),
                       'tags': get_rid_of_nones(note_tuple[4])}
     return notes.items()[1:10]
 
-import atexit
+
 @atexit.register
 def close_connections():
     if myConnection != None:
@@ -126,12 +147,23 @@ def close_connections():
 
 # http://stackoverflow.com/questions/3195125/copy-a-table-from-one-database-to-another-in-postgres
 
+
+def test_un_none():
+    assert get_rid_of_nones([]) == None
+    assert get_rid_of_nones([None]) == None
+    assert get_rid_of_nones([None, None, None]) == None
+    assert get_rid_of_nones(["url"]) == ["url"]
+    assert get_rid_of_nones(["url", "url2"]) == ["url", "url2"]
+    assert get_rid_of_nones(["url", None, "url2"]) == ["url", "url2"]
+    assert get_rid_of_nones([None, None, "url"]) == ["url"]
+
 if __name__ == "__main__":
     login_info = json.load(open("login_info.json","r"))
-    myConnection = load_DB(login_info['ML'])
+    myConnection = load_db(login_info['ML'])
     print "Test connection made!"
     print "..."
     print get_all_notes(myConnection)
+    test_un_none()
     # setup_tables()
     # print "Tables set up!"
     # load_test_papers()
